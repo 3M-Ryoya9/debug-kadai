@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タイマーアプリ</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        /* hiddenというclass！idとかと同じように使われてる */
+        /* その要素を画面に表示しない */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="container my-4 d-flex justify-content-center">
+    <div class="text-center col-12 col-md-6">
+
+        <!-- タイマー表示部分 -->
+        <div>
+            <!-- 00:00 は 文字列として表示されてる。HTMLだから""はいらない   -->
+            <span id="timer" class="display-4">00:00</span>
+        </div>
+
+        <!-- 入力フォーム -->
+        <div id="inputForm" class="mt-3 hidden">
+            <div class="row justify-content-center">
+                <div class="col-6 d-flex align-items-center">
+                    <!-- 「ユーザーが入力欄に何か入力したタイミングで updateTimer() という関数を実行 -->
+                    <!-- oninput→「キーボードを打った」「マウスで値を変更した」など、あらゆる入力の変化に反応するイベント -->
+                    <!-- min="0"<input type="number"> 専用の属性で、0未満は入力できなくなる制限 -->
+                    <!-- 例えば -1 とか -100 を入力しても、フォーム的には無効扱い -->
+                    分：<input type="number" id="minutes" class="form-control" oninput="updateTimer()" min="0">
+                </div>
+                <div class="col-6 d-flex align-items-center">
+                    秒：<input type="number" id="seconds" class="form-control" oninput="updateTimer()" min="0">
+                </div>
+            </div>
+            <!-- エラーメッセージ -->
+            <span id="error" class="hidden text-danger"></span>
+        </div>
+
+        <!-- ボタン -->
+        <div class="mt-3">
+            <button id="start" class="btn btn-primary mb-3 hidden w-100" onclick="startCountdown()">スタート</button>
+            <div class="row justify-content-center">
+                <div class="col-6">
+                    <button id="pause" class="btn btn-info mb-3 hidden w-100" onclick="pauseCountdown()">一時停止</button>
+                    <button id="resume" class="btn btn-info mb-3 hidden w-100" onclick="resumeCountdown()">再開</button>
+                </div>
+                <div class="col-6">
+                    <button id="reset" class="btn btn-info mb-3 hidden w-100" onclick="resetCountdown()">リセット</i></button>
+                </div>
+            </div>
+            <button id="setTime" class="btn btn-secondary mb-3 hidden w-100" onclick="setTimeMode()">設定</button>
+            <button id="alertStop" class="btn btn-danger mt-5 hidden w-100 btn-lg rounded-pill" onclick="stopAlert()">アラート停止</button>
+        </div>
+    </div>
+
+    <script>
+        let countdownInterval;
+        let alertInterval;
+        let isPaused;
+
+        // 入力フォームの値をタイマーに表示する関数
+        function updateTimer() {
+            let minutes = document.getElementById('minutes').value || 0;
+            let seconds = document.getElementById('seconds').value || 0;
+
+            // 入力フォームの値をチェック
+            if (minutes < 0 || seconds < 0) {
+                document.getElementById('error').innerText = "マイナスは入力できません";
+                //  .hiddenを外して表示させる。
+                document.getElementById('error').classList.remove('hidden');
+                return;
+            }
+            // HTML内の id="error" を持つ要素取得。その要素に対して、hidden というクラスを追加してる。
+            // 「前回のエラー表示を消すためのリセット」が目的でif文の外で改めてhiddenクラス追加する
+            document.getElementById('error').classList.add('hidden');
+
+            //タイマーの表示部分を mm:ss（分:秒）形式に整えて、画面に表示する
+            // .innerText = → その要素に表示するテキストを設定してる
+            // String(minutes)→数値のままだと padStart 使えないから、一度「文字列」に変換
+            // .padStart(2, '0')　→ 桁が足りないときに先頭に「0」を足して、常に2桁にしてる
+            // String(5).padStart(2, '0')  // → "05"
+            // String(12).padStart(2, '0') // → "12"
+            // "${}" は テンプレートリテラルの中で使う記法。文字列の中に変数や式を埋め込むためのもの。
+            
+            // let name = "りょうや";
+            // let message = "こんにちは、" + name + "さん！";
+            // let name = "りょうや";
+            // let message = `こんにちは、${name}さん！`;
+
+            document.getElementById('timer').innerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        // カウントダウンを開始する関数
+        function startCountdown() {
+        //  isPaused = false; を記載しておかないと一時停止のpauseCountdown()
+        //  のisPaused = true;でifがスルーされてしまう。
+            let minutes = document.getElementById('minutes').value || 0;
+            let seconds = document.getElementById('seconds').value || 0;
+            //分 → 秒 に変換してる。例えば「2分」なら → 2 * 60 = 120秒
+            // parseInt(seconds)は、"45" → 45 に数値として変換。
+            // parseInt() は「なくても動く場合はあるけど、付けたほうが安全
+            // minutes * 60 の部分で "2" * 60 
+            // → これはJavaScriptの暗黙的な型変換で「数値」として処理される
+            let timeLeft = (minutes * 60) + parseInt(seconds);
+            // 165行目の関数を呼び出し、["pause", "reset", "setTime"] のボタンだけを再表示する
+            setMode("progress");
+
+            // 1000ミリ秒（=1秒）ごとにこの中の処理を繰り返す。
+            // startCountdown()が一度実行されると中のsetIntervalが1秒ごとに呼び出される仕組み
+            // 63行目に「let countdownInterval;」が定義されてる。
+            // const sayGoodMorning = () => {
+            // console.log("おはようございます！");}と同じ。sayGoodMorning();が必要だけど
+            // 今回はstartCountdown()の中であって、startCountdown()を呼び出されるとココも実行される。
+            countdownInterval = setInterval(() => {
+                // 64行目「let isPaused;」は初期化していないためundefined。
+                // JavaScriptでは undefined はfalse認定(if文はtrueと判断する)
+                //　「一時停止」が押されるとpauseCountdown()が実行される(if文はfalseと判断する)
+                if(!isPaused) {
+                    // 時間を1秒減らす
+                    timeLeft--;
+                    if(timeLeft < 0) {
+                        // タイマーを止めて (clearInterval)
+                        // アラート画面に切り替える（背景が点滅するやつ）
+                        // countdownInterval という変数には「今動いてるタイマー処理」の情報が入ってる
+                        // clearInterval()はJavaScriptが最初から標準で用意している関数※「組み込み関数（built-in function）」
+                        // 118行目のsetInterval() で設定した繰り返しを止める
+                        clearInterval(countdownInterval);
+                        startAlert();
+                    } else {
+                        //残り秒数 timeLeft を “分” と “秒” に分けて表示用にする」ための処理
+                        //ex) timeLeft = 125（125秒）
+                        // 125 / 60 = 2.08... を 小数点切り捨てて 2→2分
+                        let m = Math.floor(timeLeft / 60);
+                        // 125 % 60 = 5→5秒残ってる
+                        let s = timeLeft % 60;
+                        // 下記はJavaScriptだから文字列として扱うには "" が必要
+                        document.getElementById('timer').innerText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                    }
+                }
+            }, 1000);
+        }
+
+        // カウントダウンを一時停止する関数
+        function pauseCountdown() {
+            // 外部からsetInterval()のif(!isPaused)をfalseに変えた！→	止まる！
+            isPaused = true;
+            setMode("paused");
+        }
+
+        // カウントダウンを再開する関数
+        function resumeCountdown() {
+            isPaused = false;
+            setMode("progress");
+        }
+
+        // カウントダウンをリセットする関数
+        function resetCountdown() {
+            // countdownInterval という変数には「今動いてるタイマー処理」の情報が入ってる
+            // clearInterval()はJavaScriptが最初から標準で用意している関数※「組み込み関数（built-in function）」
+            // 118行目のsetInterval() で設定した繰り返しを止める
+            clearInterval(countdownInterval);
+            // 67行目
+            updateTimer();
+            setMode("restart");
+
+            let reStartBtn = document.getElementById("start");
+            // resumeCountdown() が増殖すると「1クリックで何回も処理が動く」から、
+            // バグる・不具合が起きる・思ってた動きと違うって問題になる可能性がある
+            // isPaused = false;「モード切り替え」やsetMode("progress")「見た目の再表示」処理が 
+            // 毎回重複して実行される
+            // この () => { resumeCountdown(); } は「一度きりの無名関数」だから、
+            // addEventListener で登録したやつとは 別物扱い されて、削除できない
+
+            /*reStartBtn.removeEventListener("click", () => {
+                resumeCountdown();
+            });
+            reStartBtn.addEventListener("click", () => {
+                resumeCountdown();
+            });*/
+
+            // addEventListener と removeEventListener で同じ参照を使ってるから、
+            // ちゃんとイベントを解除→再登録できる
+            reStartBtn.removeEventListener("click", resumeCountdown);
+            reStartBtn.addEventListener("click", resumeCountdown);
+        }
+
+        // 時間設定モードに変更する関数
+        function setTimeMode() {
+            // countdownInterval という変数には「今動いてるタイマー処理」の情報が入ってる
+            // clearInterval()はJavaScriptが最初から標準で用意している関数※「組み込み関数（built-in function）」
+            // 118行目のsetInterval() で設定した繰り返しを止める
+            clearInterval(countdownInterval);
+            setMode("setting");
+        }
+
+        // アラートを開始する関数
+        function startAlert() {
+            // 	setInterval()→一定間隔で処理を繰り返す
+            alertInterval = setInterval(() => {
+                // 背景色が 'red' なら 'white' にする。そうでなければ 'red' にする
+                document.body.style.backgroundColor = document.body.style.backgroundColor === 'red' ? 'white' : 'red';
+            }, 1000);
+            // 'alertStop' の要素を表示させる。
+            document.getElementById('alertStop').classList.remove('hidden')
+        }
+
+        // アラートを停止する関数
+        function stopAlert() {
+            // countdownInterval という変数には「今動いてるタイマー処理」の情報が入ってる
+            // clearInterval()はJavaScriptが最初から標準で用意している関数※「組み込み関数（built-in function）」
+            // 183行目のsetInterval() で設定した繰り返しを止める
+            clearInterval(alertInterval);
+            document.body.style.backgroundColor = 'white';
+            // 「アラートを止めるボタン」（ID: alertStop）を再び非表示にする
+            document.getElementById('alertStop').classList.add('hidden')
+        }
+
+        // HTML要素の表示を制御する関数
+        function setMode(mode) {
+            const modes = {
+            //"progress" モードに対応した ["pause", "reset", "setTime"] のボタンだけを再表示する
+            // modes = progress;のとき、["pause", "reset", "setTime"]を返す。
+            // 181行目のidsで使用する
+                setting: ["start", "inputForm"],
+                progress: ["pause", "reset", "setTime"],
+                paused: ["resume", "reset", "setTime"],
+                restart: ["start", "setTime"],
+            };
+
+            // すべてのボタンと入力フォームを非表示にする(次のコードで必要なボタンを表示させるため)
+            const elements = document.querySelectorAll('#inputForm, #start, #pause, #resume, #reset, #setTime');
+            elements.forEach(elem => elem.classList.add('hidden'));
+
+            // 指定されたモードの要素だけを表示する
+            // ids に入ってるIDたち（"pause", "reset", "setTime" など）をひとつずつ取り出して、
+            // それぞれ getElementById() で該当のHTML要素を取得し、
+            // .classList.remove('hidden') で「非表示状態（hidden）」を解除して表示する
+            const ids = modes[mode];
+            ids.forEach(id => document.getElementById(id).classList.remove('hidden'));
+        }
+
+        // 初期状態をセット。一番最初に実行される！
+        // 「スタートボタン」と「分・秒の入力フォーム」だけが表示される
+        setMode("setting");
+    </script>
+</body>
+</html>
